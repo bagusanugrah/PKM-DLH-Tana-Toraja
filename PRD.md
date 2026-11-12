@@ -1,7 +1,7 @@
 # PRD — Website Dinas Lingkungan Hidup (DLH) Kabupaten Tana Toraja
 
 > **Dokumen ini ditulis agar AI coding agent apa pun (atau developer manusia) bisa membangun seluruh website tanpa bertanya ulang.**
-> Semua isi dokumen sumber "Kebutuhan dan Rancangan Website DLH Tana Toraja (sementara)" sudah dimasukkan di sini. Bagian yang **ditambahkan** karena pergantian stack (NestJS + Next.js + Tailwind) diberi label **[KEPUTUSAN TEKNIS]** supaya mudah dibedakan dari kebutuhan asli.
+> Semua isi dokumen sumber "Kebutuhan dan Rancangan Website DLH Tana Toraja (sementara)" sudah dimasukkan di sini. Bagian yang **disesuaikan** karena pemilihan stack modern (Next.js App Router + Tailwind CSS full-stack tanpa backend NestJS terpisah) diberi label **[KEPUTUSAN TEKNIS]** supaya mudah dibedakan dari kebutuhan asli.
 >
 > **Konteks:** proyek ini adalah tugas dari **Dinas Lingkungan Hidup (DLH) Kabupaten Tana Toraja** sebagai mitra. Karena dokumen sumber belum menjabarkan semuanya, bagian yang **dilengkapi secara kreatif** diberi label **[TAMBAHAN KREATIF]** (fitur dengan kode **K01–K15** di Bagian 7.4, serta isi siap pakai di Bagian 21–24). Label itu sengaja dipisah supaya mitra dan pembimbing bisa menerima, menolak, atau mengubahnya tanpa mengganggu kebutuhan asli (F01–F24).
 
@@ -81,33 +81,37 @@ Warga (buka lewat HP)
    → Pegawai DLH (tindak lanjut)
         ↘ memperbarui
    Jadwal & Peta (Google Sheets + Google My Maps)
-        ↗ ditampilkan kembali di Website DLH (lewat NestJS API)
+        ↗ ditampilkan kembali di Website DLH (lewat Next.js Route Handlers / ISR)
 ```
 
 Penjelasan: Warga membuka website dan mengirim laporan lewat Google Form. Laporan tersimpan di Google Sheets milik akun dinas, lalu pegawai menindaklanjutinya. Pegawai juga bisa memperbarui peta lewat My Maps tanpa menyentuh kode. Jadwal ikut diperbarui lewat Sheets kalau fitur F17 dikerjakan; tanpa F17, jadwal diubah lewat file website dengan bantuan panduan.
 
-### 2.2 [KEPUTUSAN TEKNIS] Arsitektur dengan NestJS + Next.js
+### 2.2 [KEPUTUSAN TEKNIS] Arsitektur dengan Next.js Full-Stack (Serverless tanpa NestJS)
 
-Dokumen sumber awalnya mengasumsikan website statis di GitHub Pages. Karena stack diminta NestJS (backend) dan Next.js + Tailwind (frontend), arsitekturnya menjadi:
+Dokumen sumber awalnya mengasumsikan website statis di GitHub Pages. Pada revisi awal sempat dipertimbangkan backend NestJS terpisah, namun setelah evaluasi efisiensi dan batasan paket hosting gratis (di mana layanan gratis seperti Render mengalami *cold start* 30–50 detik karena server tertidur), arsitektur disederhanakan menjadi **Next.js Full-Stack murni (App Router + Route Handlers)**:
 
 ```
-┌────────────────────┐   fetch (server-side, ISR)   ┌──────────────────────┐
-│  Next.js + Tailwind│ ───────────────────────────▶ │  NestJS API (tanpa DB)│
-│  (apps/web)        │                              │  (apps/api)           │
-└─────────┬──────────┘                              └──────────┬───────────┘
-          │ iframe                                             │ baca (read-only)
-          ▼                                                    ▼
-   Google Form (pengaduan)                 Google Sheets (jadwal, tab terpisah, publish CSV)
-   → Google Sheets rekap (privat)          Google My Maps (KML publik) → daftar lokasi
+┌────────────────────────────────────────────────────────────────┐
+│               Next.js + Tailwind CSS (Full-Stack)              │
+│  ┌───────────────────────────┐      ┌────────────────────────┐ │
+│  │ UI Halaman (App Router)   │ ────▶│ Route Handlers (/api/*)│ │
+│  │ (Server Component & ISR)  │◀──── │ (Serverless BFF)       │ │
+│  └─────────────┬─────────────┘      └───────────┬────────────┘ │
+└────────────────┼────────────────────────────────┼──────────────┘
+                 │ iframe                         │ baca (read-only)
+                 ▼                                ▼
+          Google Form (pengaduan)       Google Sheets (jadwal, tab terpisah, publish CSV)
+          → Google Sheets rekap         Google My Maps (KML publik) → daftar lokasi
+            (privat dinas)
 ```
 
 Prinsip yang tidak boleh dilanggar:
 
-1. **NestJS adalah backend tipis (thin backend / BFF) tanpa database.** Ia hanya membaca data publik (jadwal, lokasi, pengumuman) dari Google, menormalkan, dan men-cache di memori.
-2. **NestJS tidak pernah menerima, melewatkan, atau menyimpan data pelapor.** Formulir pengaduan tetap Google Form tertanam. Ini memenuhi standar keamanan "tim tidak menyimpan data pelapor di server sendiri".
+1. **Next.js Route Handlers bertindak sebagai BFF tipis tanpa database.** Ia hanya membaca data publik (jadwal, lokasi, pengumuman) dari Google, menormalkan, dan men-cache melalui ISR (`revalidate: 300`).
+2. **Server website tidak pernah menerima, melewatkan, atau menyimpan data pelapor.** Formulir pengaduan tetap Google Form tertanam. Ini memenuhi standar keamanan "tim tidak menyimpan data pelapor di server sendiri".
 3. **Spreadsheet rekap laporan harus berbeda file dari spreadsheet jadwal.** Hanya spreadsheet jadwal yang boleh "Publish to web". Rekap laporan tidak boleh dipublikasikan dan hanya bisa dibuka akun dinas.
-4. **Website harus tetap bisa tampil jika API sedang mati/lambat** (lihat fallback di Bagian 9.5).
-5. Semua layanan memakai paket gratis (lihat Bagian 15 untuk opsi hosting dan catatannya).
+4. **Website harus tetap bisa tampil jika API eksternal sedang lambat/gagal** (menggunakan fallback statis bawaan).
+5. Semua layanan memakai paket gratis (cukup 1 akun Vercel / Netlify / Cloudflare Pages tanpa perlu hosting backend terpisah).
 
 ---
 
@@ -116,11 +120,11 @@ Prinsip yang tidak boleh dilanggar:
 | Kebutuhan | Alat | Dipakai untuk | Biaya |
 |---|---|---|---|
 | Editor | Visual Studio Code | Menulis kode | Gratis |
-| Frontend | **Next.js** (App Router, TypeScript) | Halaman, routing, SEO, ISR | Gratis |
-| Styling | **Tailwind CSS** | Tata letak responsif, menu, tombol (menggantikan Bootstrap 5 pada dokumen sumber) | Gratis |
-| Backend | **NestJS** (TypeScript) | API tipis pembaca jadwal/lokasi/pengumuman | Gratis |
+| Framework Utama | **Next.js** (App Router, TypeScript) | Halaman antarmuka, routing, SEO, ISR, dan Route Handlers | Gratis |
+| Styling | **Tailwind CSS** | Tata letak responsif, menu, tombol (menggantikan Bootstrap 5) | Gratis |
+| Backend & API | **Next.js Route Handlers** (TypeScript) | Endpoint tipis pembaca jadwal/lokasi/pengumuman (menggantikan NestJS terpisah) | Gratis |
 | Kerja tim | Git + GitHub | Kode bersama, riwayat perubahan | Gratis |
-| Hosting | Lihat Bagian 15 | Menayangkan website dengan HTTPS | Gratis |
+| Hosting | Vercel / Netlify / Cloudflare Pages | Menayangkan website dengan HTTPS otomatis (satu pintu) | Gratis |
 | Formulir & rekap | Google Form + Google Sheets (akun dinas) | Pengaduan dan rekap laporan | Gratis |
 | Peta | Google My Maps | Titik TPS dan bank sampah yang bisa diedit dinas | Gratis |
 | Kompres gambar | Squoosh | Memperkecil foto ke WebP | Gratis |
@@ -129,51 +133,48 @@ Prinsip yang tidak boleh dilanggar:
 
 Pustaka yang disarankan (boleh diganti padanan setara):
 
-- Web: `next`, `react`, `tailwindcss`, `typescript`, `next/font` (atau font sistem), `eslint`, `prettier`.
-- API: `@nestjs/core`, `@nestjs/config`, `@nestjs/cache-manager` (atau cache memori sederhana), `@nestjs/throttler`, `helmet`, `class-validator`, `fast-xml-parser` (parsing KML), `papaparse` (parsing CSV), `jest` + `supertest`.
-- Gunakan Node.js versi LTS terbaru dan paket manajer `pnpm` atau `npm` workspaces.
+- Frontend & API: `next`, `react`, `tailwindcss`, `typescript`, `fast-xml-parser` (parsing KML), `papaparse` (parsing CSV), `lucide-react`, `eslint`, `prettier`.
+- Gunakan Node.js versi LTS terbaru dan paket manajer `npm`.
 
 ---
 
-## 4. Struktur repositori (monorepo)
+## 4. Struktur repositori
 
 ```
 dlh-tanatoraja/
-├─ apps/
-│  ├─ web/                      # Next.js + Tailwind
-│  │  ├─ app/
-│  │  │  ├─ layout.tsx          # Header, menu, footer, metadata dasar
-│  │  │  ├─ page.tsx            # Beranda
-│  │  │  ├─ profil/page.tsx
-│  │  │  ├─ layanan/page.tsx
-│  │  │  ├─ informasi/page.tsx
-│  │  │  ├─ pengaduan/page.tsx
-│  │  │  ├─ privasi/page.tsx    # [TAMBAHAN KREATIF] K01
-│  │  │  ├─ sitemap.ts
-│  │  │  ├─ robots.ts
-│  │  │  └─ not-found.tsx
-│  │  ├─ components/            # Header, Footer, NavMenu, Banner, QuickCards, SortingGuide, Steps, Accordion, ScheduleTable, LocationList, MapEmbed, ComplaintForm, WhatsAppButton, Announcements
-│  │  ├─ content/               # Konten statis yang diedit lewat file (profil, layanan, panduan sampah, kontak, fallback jadwal/lokasi)
-│  │  │  ├─ site.ts             # Nama dinas, alamat, jam layanan, telepon, email, media sosial, WA
-│  │  │  ├─ profil.ts
-│  │  │  ├─ layanan.ts
-│  │  │  ├─ sampah.ts
-│  │  │  ├─ faq.ts              # [TAMBAHAN KREATIF] K02
-│  │  │  ├─ daftarSampah.ts     # [TAMBAHAN KREATIF] K04
-│  │  │  ├─ jenisMasalah.ts     # daftar jenis masalah (selaras dengan Google Form)
-│  │  │  ├─ tips3r.ts           # [TAMBAHAN KREATIF] K05
-│  │  │  ├─ jadwal.fallback.json
-│  │  │  └─ lokasi.fallback.json
-│  │  ├─ public/images/         # Semua gambar < 200 KB, WebP
-│  │  └─ lib/api.ts             # Klien fetch ke NestJS
-│  └─ api/                      # NestJS
-│     └─ src/
-│        ├─ main.ts
-│        ├─ app.module.ts
-│        ├─ health/
-│        ├─ schedules/          # F13, F14, F17
-│        ├─ locations/          # F15, F16
-│        └─ announcements/      # F09 (Tambahan)
+├─ app/
+│  ├─ layout.tsx          # Header, menu, footer, metadata dasar
+│  ├─ page.tsx            # Beranda
+│  ├─ profil/page.tsx     # Profil dinas
+│  ├─ layanan/page.tsx    # Layanan publik
+│  ├─ informasi/page.tsx  # Jadwal angkut & lokasi TPS
+│  ├─ pengaduan/page.tsx  # Form pengaduan
+│  ├─ privasi/page.tsx    # Kebijakan Privasi (K01)
+│  ├─ not-found.tsx       # 404
+│  ├─ sitemap.ts          # Sitemap generator
+│  ├─ robots.ts           # Robots.txt
+│  ├─ manifest.ts         # PWA Manifest (K11)
+│  └─ api/                # Route Handlers serverless (pengganti NestJS)
+│     ├─ health/route.ts
+│     ├─ schedules/route.ts
+│     ├─ locations/route.ts
+│     └─ announcements/route.ts
+├─ components/            # Header, Footer, NavMenu, Banner, QuickCards, SortingGuide, Steps, Accordion, ScheduleTable, LocationList, MapEmbed, ComplaintForm, WhatsAppButton, Announcements, WasteChecker, Tips3R, QuickStats, TextSizeControl, TorajaOrnament
+├─ content/               # Konten statis yang diedit lewat file (profil, layanan, panduan sampah, kontak, fallback jadwal/lokasi)
+│  ├─ site.ts             # Nama dinas, alamat, jam layanan, telepon, email, media sosial, WA
+│  ├─ profil.ts
+│  ├─ layanan.ts
+│  ├─ sampah.ts
+│  ├─ faq.ts              # [TAMBAHAN KREATIF] K02
+│  ├─ daftarSampah.ts     # [TAMBAHAN KREATIF] K04
+│  ├─ jenisMasalah.ts     # daftar jenis masalah (selaras dengan Google Form)
+│  ├─ tips3r.ts           # [TAMBAHAN KREATIF] K05
+│  ├─ jadwal.fallback.json
+│  └─ lokasi.fallback.json
+├─ lib/                   # Logika serverless: schedules.ts, locations.ts, announcements.ts, api.ts
+├─ public/
+│  ├─ formulir/           # Formulir PDF unduhan (F12)
+│  └─ images/             # Gambar & ikon WebP/SVG < 200 KB
 ├─ docs/
 │  ├─ PANDUAN-PENGELOLAAN.md    # Untuk pegawai DLH (tanpa kode)
 │  ├─ DAFTAR-AKUN.md            # Template daftar akun untuk serah terima
@@ -549,22 +550,22 @@ Setiap standar punya cara uji yang jelas supaya tim bisa **membuktikan** kualita
 | Mudah ditemukan | Setiap halaman punya judul dan deskripsi yang memuat nama dinas | Lighthouse skor SEO minimal 90 |
 | Biaya | Tidak ada biaya bulanan untuk hosting dan formulir | Semua layanan memakai paket gratis |
 
-### 8.1 [KEPUTUSAN TEKNIS] Cara memenuhi standar dengan Next.js + Tailwind + NestJS
+### 8.1 [KEPUTUSAN TEKNIS] Cara memenuhi standar dengan Next.js + Tailwind CSS
 
-- **Kecepatan:** gunakan Server Components dan ISR (`revalidate: 300`) sehingga HTML sudah berisi data jadwal/lokasi; minim JavaScript klien (hanya menu HP, accordion, filter, dan iframe). Gunakan `next/image` atau gambar WebP yang sudah dikompres (< 200 KB) dengan `width`/`height` eksplisit; iframe (Form, peta) `loading="lazy"`. Jangan memuat pustaka UI berat atau font berlebihan (maks. 1 keluarga font, via `next/font` dengan `display: swap`, atau pakai font sistem).
+- **Kecepatan:** gunakan Server Components dan ISR (`revalidate: 300`) sehingga HTML sudah berisi data jadwal/lokasi; minim JavaScript klien (hanya menu HP, accordion, filter, dan iframe). Gunakan `next/image` atau gambar WebP yang sudah dikompres (< 200 KB) dengan `width`/`height` eksplisit; iframe (Form, peta) `loading="lazy"`. Jangan memuat pustaka UI berat atau font berlebihan.
 - **Responsif:** pendekatan mobile-first Tailwind (kelas dasar untuk HP, lalu `md:`/`lg:`); uji pada 360, 390, 768, 1024, 1440 px; tidak ada `min-width` tetap yang melebihi 360 px; kontainer tabel/peta/iframe `max-w-full`.
-- **Aksesibilitas:** `<html lang="id">`; tautan "Lompat ke konten utama" (skip link); urutan heading logis (satu `h1` per halaman); fokus terlihat jelas (`focus-visible:ring`); elemen interaktif menggunakan elemen semantik (`button`, `a`, `details`); `alt` pada semua gambar (gambar dekoratif `alt=""`); ukuran target ≥ 44 px (`min-h-11 min-w-11` atau setara); teks isi ≥ 16 px (`text-base`), jangan mengecilkan teks isi di bawah itu; rasio kontras ≥ 4,5:1 (hijau `#1F6B4A` di atas putih ≈ 7:1 — aman; teks putih di atas hijau juga aman; **jangan** memakai abu-abu muda untuk teks).
-- **Keamanan:** HTTPS dari platform hosting; NestJS memakai `helmet`, CORS dibatasi ke domain frontend, rate limiting (`@nestjs/throttler`), validasi env saat start, tidak ada rahasia di repo. Header keamanan di Next.js (`next.config`): `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options` sesuai kebutuhan; CSP harus mengizinkan iframe `docs.google.com` (Form) dan `www.google.com` (My Maps, Maps embed).
-- **SEO:** `metadata` per halaman dengan `title` dan `description` yang memuat "Dinas Lingkungan Hidup Kabupaten Tana Toraja" (mis. `title: "Jadwal dan Lokasi Sampah | DLH Kabupaten Tana Toraja"`); `sitemap.xml`, `robots.txt`, Open Graph dasar, `canonical`.
-- **Privasi:** tidak ada analitik pihak ketiga atau cookie pelacak tanpa persetujuan; tidak ada pengiriman data pelapor ke NestJS.
+- **Aksesibilitas:** `<html lang="id">`; tautan "Lompat ke konten utama" (skip link); urutan heading logis (satu `h1` per halaman); fokus terlihat jelas (`focus-visible:ring`); elemen interaktif menggunakan elemen semantik (`button`, `a`, `details`); `alt` pada semua gambar (gambar dekoratif `alt=""`); ukuran target ≥ 44 px (`min-h-11 min-w-11` atau setara); teks isi ≥ 16 px (`text-base`); rasio kontras ≥ 4,5:1 (hijau `#1F6B4A` di atas putih ≈ 7:1 — aman).
+- **Keamanan:** HTTPS dari platform hosting Vercel/Netlify; header keamanan di Next.js (`next.config.mjs`): `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options` sesuai kebutuhan; CSP mengizinkan iframe `docs.google.com` (Form) dan `www.google.com` (My Maps, Maps embed).
+- **SEO:** `metadata` per halaman dengan `title` dan `description` yang memuat "Dinas Lingkungan Hidup Kabupaten Tana Toraja"; `sitemap.xml`, `robots.txt`, Open Graph dasar, `canonical`.
+- **Privasi:** tidak ada analitik pihak ketiga atau cookie pelacak tanpa persetujuan; tidak ada penyimpanan data pelapor di server.
 
 ---
 
-## 9. [KEPUTUSAN TEKNIS] Spesifikasi backend NestJS
+## 9. [KEPUTUSAN TEKNIS] Spesifikasi Backend (Next.js Route Handlers)
 
 ### 9.1 Prinsip
 
-- Tanpa database. Cache memori dengan TTL (default 300 detik) + **stale-while-error** (jika sumber Google gagal, sajikan data cache terakhir yang berhasil).
+- Tanpa database. Route Handlers serverless di Next.js (`app/api/*`) yang membaca data publik dengan ISR (`revalidate: 300`) + **stale-while-error** (jika sumber Google gagal, sajikan data fallback statis).
 - Hanya endpoint `GET` publik, read-only. Tidak ada endpoint yang menerima data warga.
 - Semua respons JSON dengan awalan `/api`. Validasi/normalisasi data sebelum dikirim.
 
@@ -619,64 +620,55 @@ export interface PengumumanItem {
 
 ### 9.3 Sumber jadwal (F13/F17)
 
-- `SCHEDULE_SOURCE=file` (default sebelum F17): baca `jadwal.fallback.json` (dibundel bersama API atau diambil dari repo web) dan validasi skemanya.
-- `SCHEDULE_SOURCE=sheets`: ambil CSV dari `SHEETS_SCHEDULE_CSV_URL` (File → Share → Publish to web → tab "Jadwal" → format CSV). Header kolom wajib persis: `kecamatan,wilayah,hari,jam,titik_kumpul`. Baris kosong diabaikan; baris tidak valid dicatat ke log dan dilewati (jangan merusak seluruh respons).
+- `SCHEDULE_SOURCE=file` (default sebelum F17): baca `content/jadwal.fallback.json` dan validasi skemanya.
+- `SCHEDULE_SOURCE=sheets`: ambil CSV dari `SHEETS_SCHEDULE_CSV_URL` (File → Share → Publish to web → tab "Jadwal" → format CSV). Header kolom wajib persis: `kecamatan,wilayah,hari,jam,titik_kumpul`. Baris kosong diabaikan; baris tidak valid dicatat ke log dan dilewati.
 - Spreadsheet jadwal **terpisah** dari spreadsheet rekap laporan. Hanya tab jadwal (dan pengumuman) yang dipublikasikan.
-- Jika pengambilan gagal: pakai cache lama (`stale: true`); jika tidak ada cache sama sekali: pakai file fallback.
+- Jika pengambilan gagal: pakai data fallback bawaan (`stale: true`).
 
 ### 9.4 Sumber lokasi (F15/F16) — konvensi Google My Maps
 
-- NestJS mengambil KML dari `https://www.google.com/maps/d/kml?mid=<MAP_ID>&forcekml=1` (`MYMAPS_ID` dari env). Peta harus publik.
+- Next.js mengambil KML dari `https://www.google.com/maps/d/kml?mid=<MAP_ID>&forcekml=1` (`MYMAPS_ID` dari env). Peta harus publik.
 - Parsing dengan `fast-xml-parser`:
-  - **Nama layer (Folder)** = `jenis` (harus tepat salah satu: `TPS`, `TPS3R`, `Bank Sampah`). Layer lain diabaikan/diberi jenis `TPS` dengan peringatan log.
+  - **Nama layer (Folder)** = `jenis` (harus tepat salah satu: `TPS`, `TPS3R`, `Bank Sampah`). Layer lain diabaikan.
   - **Placemark.name** = nama lokasi.
-  - **Placemark.description** = dua baris dengan format tetap: `Alamat: ...` dan `Jam buka: ...`. Parser harus toleran terhadap HTML sederhana (`<br>`) dan huruf besar/kecil.
+  - **Placemark.description** = dua baris dengan format: `Alamat: ...` dan `Jam buka: ...`. Parser toleran terhadap HTML sederhana (`<br>`) dan huruf besar/kecil.
   - **Point.coordinates** = `lng,lat,alt` (urutan KML: bujur dulu).
-- Panduan pegawai (di `docs/PANDUAN-PENGELOLAAN.md`) harus menjelaskan konvensi ini dengan tangkapan layar/langkah sederhana.
-- Fallback: `lokasi.fallback.json`.
+- Fallback: `content/lokasi.fallback.json`.
 
 ### 9.5 Ketahanan (website tetap tampil)
 
-- Frontend memanggil API **di server** (Server Component, `fetch` dengan `next: { revalidate: 300 }`), bukan dari browser warga. Warga tidak terkena *cold start* API.
-- Jika API gagal total: Next.js memakai data fallback dari `content/*.fallback.json` dan menampilkan catatan kecil "Data mungkin belum terbaru."
-- Batas waktu (timeout) fetch ke API: 5 detik; ke Google: 5 detik.
+- Server Components memanggil fungsi data langsung di server atau melalui Route Handlers dengan `next: { revalidate: 300 }`.
+- Jika Google lambat/gagal: website otomatis menampilkan data fallback dari `content/*.fallback.json`.
+- Batas waktu (timeout) fetch ke Google: 5 detik.
 
 ### 9.6 Konfigurasi dan rahasia
 
 `.env.example`:
 
 ```env
-# ===== apps/api =====
-PORT=3001
-NODE_ENV=production
-CORS_ORIGIN=https://<domain-frontend>
-CACHE_TTL_SECONDS=300
+PORT=3000
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+
 SCHEDULE_SOURCE=file                # file | sheets
 SHEETS_SCHEDULE_CSV_URL=            # CSV publish-to-web tab Jadwal (F17)
-SHEETS_ANNOUNCEMENTS_CSV_URL=       # CSV tab Pengumuman (F09, opsional)
-ENABLE_ANNOUNCEMENTS=false
-MYMAPS_ID=                          # ID peta My Maps
 
-# ===== apps/web =====
-NEXT_PUBLIC_SITE_URL=https://<domain-frontend>
-API_BASE_URL=https://<domain-api>   # dipakai di server Next.js
-NEXT_PUBLIC_MYMAPS_ID=
-NEXT_PUBLIC_GOOGLE_FORM_EMBED_URL=  # .../viewform?embedded=true
-NEXT_PUBLIC_GOOGLE_FORM_URL=        # tautan form biasa (cadangan)
-NEXT_PUBLIC_WHATSAPP_NUMBER=        # mis. 62812xxxxxxx (tanpa + dan spasi)
+NEXT_PUBLIC_MYMAPS_ID=1A2B3C4D5E    # ID peta Google My Maps
+MYMAPS_ID=1A2B3C4D5E
+
+ENABLE_ANNOUNCEMENTS=false
+SHEETS_ANNOUNCEMENTS_CSV_URL=
+
+NEXT_PUBLIC_GOOGLE_FORM_EMBED_URL=https://docs.google.com/forms/d/e/1FAIpQLSc_example_form_id/viewform?embedded=true
+NEXT_PUBLIC_GOOGLE_FORM_URL=https://docs.google.com/forms/d/e/1FAIpQLSc_example_form_id/viewform
+NEXT_PUBLIC_WHATSAPP_NUMBER=6281234567890
 NEXT_PUBLIC_ENABLE_WHATSAPP=true
 ```
 
-Tidak ada kredensial Google (service account/API key) yang dibutuhkan karena hanya memakai sumber publik (CSV publish-to-web dan KML). Jangan commit file `.env`.
-
-### 9.7 Pengujian backend
-
-- Unit test: parser CSV jadwal (baris valid, kosong, rusak), parser KML (layer, deskripsi, koordinat), logika cache dan stale-while-error.
-- E2E (`supertest`): `/api/health`, `/api/schedules`, `/api/locations` dengan sumber di-mock; pastikan format respons sesuai tipe di 9.2.
+Tidak ada kredensial rahasia database karena hanya memakai sumber publik.
 
 ---
 
-## 10. Konten statis (disimpan di `apps/web/content/`)
+## 10. Konten statis (disimpan di `content/`)
 
 | File | Isi | Sumber |
 |---|---|---|
@@ -830,17 +822,19 @@ Semua perangkat utama gratis. Satu-satunya biaya yang mungkin muncul adalah nama
 - ☐ Akun Google atas nama dinas (**menunggu konfirmasi mitra**), dipakai untuk Form, Sheets, dan My Maps
 - ☐ Daftar akun dan password diserahkan ke dinas saat serah terima, lalu **password diganti oleh dinas**
 
-### 15.2 [KEPUTUSAN TEKNIS] Hosting gratis untuk Next.js + NestJS
+### 15.2 [KEPUTUSAN TEKNIS] Hosting gratis untuk Next.js (Satu Pintu)
 
-Dokumen sumber memakai GitHub Pages (statis). GitHub Pages **tidak bisa** menjalankan NestJS maupun Next.js dengan SSR/ISR. Opsi gratis yang direkomendasikan (verifikasi syarat dan batas paket terbaru sebelum memilih):
+Dokumen sumber awalnya memakai GitHub Pages (statis). Karena Next.js menggunakan Server Components, ISR, dan Route Handlers, platform hosting yang direkomendasikan adalah **Vercel (paket Hobby)** atau **Cloudflare Pages / Netlify**:
 
 | Bagian | Opsi default | Catatan |
 |---|---|---|
-| Frontend (Next.js) | Vercel (paket Hobby) atau Cloudflare Pages / Netlify | HTTPS otomatis. Periksa syarat penggunaan paket gratis (sebagian paket gratis dibatasi untuk non-komersial) dan sampaikan ke mitra |
-| Backend (NestJS) | Layanan web gratis (mis. Render free web service, Fly.io, atau sejenis) | Paket gratis bisa "tidur" saat sepi (cold start) dan punya batas jam/sumber daya; karena frontend memanggil API dari server dengan ISR + fallback (Bagian 9.5), warga tidak terdampak langsung |
+| Seluruh Aplikasi (Next.js + Route Handlers) | Vercel (paket Hobby) | 100% Gratis, HTTPS otomatis, tanpa *cold start* server tidur, mendukung ISR dan Route Handlers dalam satu pintu deployment |
 | Domain | Subdomain bawaan hosting (gratis) | Opsional: domain `.id` berbayar atau `go.id` via Diskominfo setempat |
 
-**Alternatif jika batas paket gratis mengkhawatirkan:** NestJS dapat dijalankan sebagai fungsi serverless atau digabung sebagai route handler Next.js — tetapi permintaan klien adalah NestJS di backend, jadi opsi ini hanya dipilih bila mitra/pembimbing menyetujui. Catat keputusan akhir di `README.md` bagian "Keputusan deployment".
+Keuntungan arsitektur Next.js satu pintu dibandingkan hosting backend terpisah:
+- **Bebas Masalah Cold Start:** Tidak ada delay 30-50 detik akibat server tidur (sebagaimana dialami backend terpisah di paket gratis seperti Render).
+- **Deployment Lebih Mudah:** Cukup hubungkan repositori GitHub ke Vercel/Netlify; build dan deployment berjalan otomatis.
+- **Biaya Nol Rupiah:** Tidak memerlukan server VPS bulanan.
 
 ### 15.3 Biaya
 
@@ -1356,3 +1350,4 @@ Catat waktu dan keberhasilan tiap tugas penerimaan sebagai bukti untuk "Kemudaha
 |---|---|
 | 1.0 | PRD awal: semua isi dokumen sumber (F01–F24, non-fungsional, UI/UX, uji pengguna, bahan mitra, perangkat, kriteria selesai) + keputusan teknis NestJS/Next.js/Tailwind |
 | 1.1 | Menambahkan konteks proyek DLH, latar belakang dan indikator keberhasilan (1.2–1.3), fitur nilai tambah K01–K15 (7.4), bank konten siap pakai (21–22), pelatihan pegawai (23), dan glosarium (24) |
+| 1.2 | Penyederhanaan arsitektur teknis dari monorepo Next.js + NestJS menjadi Next.js Full-Stack (App Router + Route Handlers). Menghilangkan ketergantungan NestJS terpisah demi efisiensi ukuran proyek, eliminasi cold start pada paket hosting gratis, dan kemudahan deployment satu pintu |

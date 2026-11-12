@@ -8,8 +8,8 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 
 const scanDirs = [
-  path.join(rootDir, 'apps/web/content'),
-  path.join(rootDir, 'apps/web/app'),
+  path.join(rootDir, 'content'),
+  path.join(rootDir, 'app'),
 ];
 
 let placeholderFound = false;
@@ -54,7 +54,7 @@ function checkFile(filePath) {
         'lng',
         'data',
         'item',
-        'kategori'
+        'kategori',
       ];
       if (!allowed.includes(captured.toLowerCase()) && !captured.includes('=>') && !captured.includes(':')) {
         console.error(`\x1b[31m[PLACEHOLDER FOUND]\x1b[0m ${path.relative(rootDir, filePath)}:${index + 1} -> "${match[0]}"`);
@@ -79,7 +79,7 @@ function walkDir(dir) {
   }
 }
 
-console.log('🔍 Memeriksa placeholder berkurung siku di apps/web...');
+console.log('🔍 Memeriksa placeholder berkurung siku di content/ dan app/...');
 for (const dir of scanDirs) {
   walkDir(dir);
 }

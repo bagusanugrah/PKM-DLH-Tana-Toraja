@@ -2,9 +2,7 @@
 
 Repositori resmi website Dinas Lingkungan Hidup (DLH) Kabupaten Tana Toraja untuk penyampaian informasi persampahan (jadwal angkut, lokasi TPS/Bank Sampah), profil, katalog layanan publik, serta kanal pengaduan lingkungan hidup masyarakat.
 
-Aplikasi ini dibangun menggunakan arsitektur **Monorepo** modern:
-- **Frontend (`apps/web`):** Next.js (App Router, TypeScript) + Tailwind CSS
-- **Backend Tipis (`apps/api`):** NestJS (TypeScript, tanpa database, BFF read-only dengan in-memory cache dan stale-while-error)
+Aplikasi ini dibangun menggunakan arsitektur **Next.js Full-Stack (App Router + Route Handlers)** dengan styling **Tailwind CSS**.
 
 ---
 
@@ -16,8 +14,8 @@ Warga (HP / Komputer)
    ├─► Antarmuka Publik (Next.js + Tailwind)
    │     │ (Server-Side Fetch / ISR 5 menit)
    │     ▼
-   │   NestJS API (Thin BFF)
-   │     │ (Read-Only Publik)
+   │   Route Handlers (/api/*) di Next.js
+   │     │ (BFF Read-Only Publik)
    │     ├─► Google Sheets CSV (Jadwal Pengangkutan Sampah)
    │     └─► Google My Maps KML (Titik TPS, TPS3R & Bank Sampah)
    │
@@ -30,10 +28,11 @@ Warga (HP / Komputer)
        Pegawai DLH menerima notifikasi email & memperbarui status tindak lanjut
 ```
 
-### Prinsip Keamanan & Privasi (UU No. 27/2022 PDP):
-1. **Tidak Ada Database Pelapor di Server Tim:** Formulir pengaduan menggunakan Google Form resmi dinas. Server tim tidak pernah menyimpan nama, nomor HP, atau rincian laporan warga.
-2. **Spreadsheet Rekap Privat:** Spreadsheet rekap laporan bersifat privat hanya untuk email akun dinas DLH dan **dilarang keras** dipublikasikan ke web (*Publish to web*).
-3. **Ketahanan Sistem (Fallback):** Jika API atau layanan Google sedang mengalami kendala, website tetap dapat diakses dengan cepat menggunakan data fallback statis.
+### Keunggulan Arsitektur:
+1. **Satu Pintu Deployment (Single Project):** Frontend dan Route Handlers berada dalam satu proyek Next.js, siap di-deploy langsung ke Vercel atau Netlify secara gratis.
+2. **Bebas Masalah *Cold Start*:** Tidak ada server backend terpisah yang tertidur (sebagaimana dialami paket gratis seperti Render). Website selalu terbuka cepat bagi warga.
+3. **Privasi & Keamanan Data (UU No. 27/2022 PDP):** Formulir pengaduan menggunakan Google Form resmi dinas. Server website tidak pernah menyimpan nama, nomor HP, atau data pelapor di database luar.
+4. **Ketahanan Sistem (Fallback):** Jika API atau layanan Google sedang mengalami kendala, website tetap menyajikan data fallback statis tanpa gangguan.
 
 ---
 
@@ -41,14 +40,17 @@ Warga (HP / Komputer)
 
 ```
 dlh-tanatoraja/
-├── apps/
-│   ├── web/                    # Frontend Next.js + Tailwind
-│   │   ├── app/                # App Router (Beranda, Profil, Layanan, Informasi, Pengaduan, Privasi, 404)
-│   │   ├── components/         # Komponen UI aksesibel & modular
-│   │   ├── content/            # Single source of truth teks dinas & fallback JSON
-│   │   └── lib/                # Klien fetch API ke NestJS
-│   └── api/                    # Backend NestJS (Health, Schedules, Locations, Announcements)
-│       └── src/
+├── app/                        # App Router (Beranda, Profil, Layanan, Informasi, Pengaduan, Privasi, 404)
+│   ├── api/                    # Route Handlers serverless (health, schedules, locations, announcements)
+│   ├── layout.tsx              # Layout utama (Header, Navigasi, Footer, Skip Link)
+│   ├── page.tsx                # Halaman Beranda
+│   ├── sitemap.ts              # Sitemap generator
+│   ├── robots.ts               # Robots.txt
+│   └── manifest.ts             # PWA Manifest
+├── components/                 # Komponen UI aksesibel & modular
+├── content/                    # Sumber teks dinas & fallback JSON
+├── lib/                        # Logika data serverless (schedules, locations, announcements, api)
+├── public/                     # Aset publik (formulir PDF, icon SVG/WebP)
 ├── docs/
 │   ├── PANDUAN-PENGELOLAAN.md  # Panduan lengkap pegawai dinas (tanpa kode)
 │   ├── DAFTAR-AKUN.md          # Prosedur serah terima akun & keamanan
@@ -58,7 +60,7 @@ dlh-tanatoraja/
 ├── scripts/
 │   └── check-placeholders.mjs  # Skrip verifikasi teks berkurung siku
 ├── .env.example                # Template variabel lingkungan
-├── PRD.md                      # Product Requirements Document lengkap
+├── PRD.md                      # Product Requirements Document lengkap (v1.2)
 └── README.md
 ```
 
@@ -67,7 +69,7 @@ dlh-tanatoraja/
 ## 3. Prasyarat Sistem
 
 - **Node.js:** Versi LTS (>= v18, direkomendasikan v20 / v22)
-- **NPM:** Versi >= 9 (Mendukung npm workspaces)
+- **NPM:** Versi >= 9
 
 ---
 
@@ -83,14 +85,9 @@ cp .env.example .env
 npm install
 ```
 
-### 3. Jalankan Aplikasi dalam Mode Pengembangan:
+### 3. Jalankan Server Pengembangan:
 ```bash
-# Menjalankan frontend dan backend secara bersamaan:
 npm run dev
-
-# Atau menjalankan secara terpisah:
-npm run dev:api   # NestJS berjalan di http://localhost:3001
-npm run dev:web   # Next.js berjalan di http://localhost:3000
 ```
 
 Buka peramban di: **`http://localhost:3000`**
@@ -100,22 +97,22 @@ Buka peramban di: **`http://localhost:3000`**
 ## 5. Perintah Build & Pengujian
 
 ```bash
-# Uji coba parser & service NestJS
-npm run test
-
 # Verifikasi tidak ada placeholder berkurung siku tersisa
 npm run check-placeholders
 
-# Build seluruh workspace untuk produksi
+# Build untuk produksi
 npm run build
+
+# Menjalankan build produksi secara lokal
+npm run start
 ```
 
 ---
 
 ## 6. Keputusan Deployment (Hosting Gratis)
 
-- **Frontend (Next.js):** Vercel (Paket Hobby) atau Cloudflare Pages / Netlify dengan SSL/HTTPS otomatis.
-- **Backend (NestJS):** Layanan cloud web service (Render free web service, Fly.io, dsb.). Cold start pada paket gratis tidak mempengaruhi pengalaman warga secara langsung karena frontend menggunakan ISR (Incremental Static Regeneration) dengan *stale-while-error fallback*.
+- **Platform Utama:** Vercel (Paket Hobby) atau Cloudflare Pages / Netlify dengan SSL/HTTPS otomatis.
+- Cukup hubungkan repositori GitHub ke akun Vercel. Setiap ada pembaruan (*push*) ke cabang `main`, deployment akan berjalan otomatis dalam 1 menit tanpa biaya bulanan.
 
 ---
 

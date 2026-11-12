@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    font-size: 16px;
+    color: #1f2937;
+    background-color: #ffffff;
+  }
+
+  html.text-large {
+    font-size: 20px; /* 125% of 16px */
+  }
+
+  body {
+    @apply antialiased min-h-screen flex flex-col text-base leading-relaxed;
+  }
+
+  /* Accessibility focus ring */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-brand ring-offset-2;
+  }
+}
+
+/* Print stylesheet for K08 (Cetak Jadwal) */
+@media print {
+  header,
+  footer,
+  nav,
+  .no-print,
+  iframe,
+  button:not(.print-keep) {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 12pt !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  th,
+  td {
+    border: 1px solid #000000 !important;
+    padding: 6px 8px !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+}

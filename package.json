@@ -1,0 +1,30 @@
+{
+  "name": "dlh-tanatoraja-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Website Resmi Dinas Lingkungan Hidup Kabupaten Tana Toraja",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "dev:web": "npm run dev --workspace=@dlh/web",
+    "dev:api": "npm run dev --workspace=@dlh/api",
+    "build": "npm run build --workspaces --if-present",
+    "build:web": "npm run build --workspace=@dlh/web",
+    "build:api": "npm run build --workspace=@dlh/api",
+    "start": "npm run start --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "check-placeholders": "node scripts/check-placeholders.mjs"
+  },
+  "keywords": [
+    "dlh",
+    "tana-toraja",
+    "nextjs",
+    "nestjs",
+    "tailwind"
+  ],
+  "author": "Tim Pengembang DLH Tana Toraja",
+  "license": "UNLICENSED"
+}
